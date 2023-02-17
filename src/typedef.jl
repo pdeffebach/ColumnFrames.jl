@@ -92,5 +92,12 @@ function MutableColumnFrame(args...)
     MutableColumnFrame(ColumnFrame(args...))
 end
 
+function MutableColumnFrame()
+    d = Dict{Symbol, Int}()
+    n = Symbol[]
+    v = AbstractVector[]
+    MutableColumnFrame{typeof(v)}(Index(d, n), v)
+end
+
 
 

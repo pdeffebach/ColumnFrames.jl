@@ -1,4 +1,4 @@
-abstract type AbstractColumnFrame{V} end
+abstract type AbstractColumnFrame{V<:AbstractVector{<:AbstractVector}} end
 
 
 # Shared
@@ -12,8 +12,8 @@ function Index(names::Vector{Symbol})
     return Index(lookup, names)
 end
 
-## Imismutable, tabular
-struct ColumnFrame{V} <: AbstractColumnFrame{V}
+## Im_ismutable, tabular
+struct ColumnFrame{V <: AbstractVector} <: AbstractColumnFrame{V}
     index::Index
     vals::V
 end
@@ -42,6 +42,21 @@ function ColumnFrame(nms::Vector{Symbol}, cols::V) where {V<:Union{AbstractVecto
     ColumnFrame{V}(Index(nms), cols)
 end
 
+function ColumnFrame(; kwargs...)
+    ColumnFrame((; kwargs...,))
+end
+
+function ColumnFrame(nt::NamedTuple)
+    nms = collect(propertynames(nt))
+    vals = collect(values(nt))
+    ColumnFrame(nms, vals)
+end
+
+# Special case for empty named tuple
+function ColumnFrame(nt::NamedTuple{(), Tuple{}})
+    ColumnFrame(Symbol[], AbstractVector[])
+end
+
 names(t::ColumnFrame) = getfield(getfield(t, :index), :nms)
 lookup(t::ColumnFrame) = getfield(getfield(t, :index), :lookup)
 vals(t::ColumnFrame) = getfield(t, :vals)
@@ -51,7 +66,7 @@ constructor_name(t::Type{ColumnFrame{V}}) where {V} = ColumnFrame
 function Base.show(io::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) where {V}
     io = IOContext(io, :compact=>get(io, :compact, true), :displaysize => (10, 10))
     num_elements = length(t)
-    m = ismutable(t) ? "Mutable" : "Immutable"
+    m = _ismutable(t) ? "Mutable" : "Immutable"
     println(io, "$m ColumnFrame with $num_elements columns and column type $(eltype(V)):")
     if length(t) <= 20
         for i in eachindex(names(t))
@@ -66,7 +81,7 @@ function Base.show(io::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) where 
     end
 end
 
-struct MutableColumnFrame{V} <: AbstractColumnFrame{V}
+struct MutableColumnFrame{V <: AbstractVector} <: AbstractColumnFrame{V}
     index::Index
     vals::V
 end
@@ -78,8 +93,8 @@ constructor_name(t::MutableColumnFrame) = MutableColumnFrame
 constructor_name(t::Type{MutableColumnFrame{V}}) where {V} = MutableColumnFrame
 
 
-ismutable(t::AbstractColumnFrame) = false
-ismutable(t::MutableColumnFrame) = true
+_ismutable(t::AbstractColumnFrame) = false
+_ismutable(t::MutableColumnFrame) = true
 
 function MutableColumnFrame(t::ColumnFrame{V}) where {V}
     d = copy(lookup(t))
@@ -88,16 +103,8 @@ function MutableColumnFrame(t::ColumnFrame{V}) where {V}
     MutableColumnFrame{typeof(v)}(Index(d, n), v)
 end
 
-function MutableColumnFrame(args...)
-    MutableColumnFrame(ColumnFrame(args...))
+function MutableColumnFrame(args...; kwargs...)
+    MutableColumnFrame(ColumnFrame(args...; kwargs...))
 end
-
-function MutableColumnFrame()
-    d = Dict{Symbol, Int}()
-    n = Symbol[]
-    v = AbstractVector[]
-    MutableColumnFrame{typeof(v)}(Index(d, n), v)
-end
-
 
 

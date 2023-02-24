@@ -7,28 +7,22 @@ function Base.rest(t::AbstractColumnFrame, i::Int)
     constructor_name(t)(rest_syms, rest_vals)
 end
 
-# Not part of NamedTuple API, but necessary for
-# mapping
-struct EachColIterator{T <: AbstractColumnFrame}
-    t::T
-end
-
-Base.eachcol(t::AbstractColumnFrame) = EachColIterator(t)
-Base.length(t::EachColIterator) = length(t.t)
-Base.iterate(t::EachColIterator, iter = 1) = iterate(t.t, iter)
-Base.pairs(t::EachColIterator) = pairs(t.t)
-
 Base.propertynames(t::AbstractColumnFrame) = names(t)
 
 Base.firstindex(t::AbstractColumnFrame) = 1
 Base.lastindex(t::AbstractColumnFrame) = length(t)
-Base.getindex(t::AbstractColumnFrame, i::Int) = getindex(vals(t), i)
+
 Base.getindex(t::AbstractColumnFrame, i::Symbol) = getindex(vals(t), lookup(t)[i])
+Base.getindex(t::AbstractColumnFrame, s::AbstractString) = getindex(t, Symbol(s))
+Base.getindex(t::AbstractColumnFrame, i::Int) = getindex(vals(t), i)
+
+
 # TODO: Document that this is a deviation from the base NamedTuple.jl interface
 Base.copy(t::AbstractColumnFrame) = constructor_name(t)(copy(names(t)), copy(vals(t)))
 Base.getindex(t::AbstractColumnFrame, ::Colon) = copy(t)
 
 Base.getproperty(t::AbstractColumnFrame, s::Symbol) = getindex(t, s)
+Base.getproperty(t::AbstractColumnFrame, s::AbstractString) = getindex(t, Symbol(s))
 
 function Base.getindex(t::AbstractColumnFrame, syms::Tuple{Vararg{Symbol}})
     syms_v = collect(syms)
@@ -36,12 +30,18 @@ function Base.getindex(t::AbstractColumnFrame, syms::Tuple{Vararg{Symbol}})
     new_vals = vals(t)[new_inds]
     constructor_name(t)(syms_v, new_vals)
 end
+Base.getindex(t::AbstractColumnFrame, sts::Tuple{Vararg{<:AbstractString}}) =
+    getindex(t, Symbol.(sts))
+
 
 function Base.getindex(t::AbstractColumnFrame, syms::AbstractVector{Symbol})
     new_inds = [lookup(t)[sym] for sym in syms]
     new_vals = vals(t)[new_inds]
     constructor_name(t)(syms, new_vals)
 end
+Base.getindex(t::AbstractColumnFrame, sts::AbstractVector{<:AbstractString}) =
+    getindex(t, Symbol.(sts))
+
 
 # TODO: Document that this is a deviation from the base NamedTuple.jl interface
 function Base.getindex(t::AbstractColumnFrame, inds::AbstractVector{<:Integer})
@@ -49,6 +49,7 @@ function Base.getindex(t::AbstractColumnFrame, inds::AbstractVector{<:Integer})
     new_vals = vals(t)[inds]
     constructor_name(t)(new_syms, new_vals)
 end
+
 
 # TODO: Document that this is a deviation from the base NamedTuple.jl interface
 Base.getindex(t::AbstractColumnFrame, inds::Tuple{Vararg{<:Integer}}) =
@@ -157,13 +158,16 @@ same_names(ts::AbstractColumnFrame...) = allequal(names(t) for t in ts)
 
 # NOTE: this method signature makes sure we don't define map(f)
 function Base.map(f, nt::AbstractColumnFrame, nts::AbstractColumnFrame...)
-   if !same_names(nt, nts...)
-       throw(ArgumentError("Names do not match."))
-   end
-   nms = copy(names(nt))
+    if !same_names(nt, nts...)
+        throw(ArgumentError("Names do not match."))
+    end
+    nms = copy(names(nt))
 
-   v = Base.map(f, vals(nt), (vals(t) for t in nts)...)
-   constructor_name(nt)(nms, v)
+    v = Base.map(f, vals(nt), (vals(t) for t in nts)...)
+    if !(v isa AbstractVector{<:AbstractVector})
+        v = [[vi] for vi in v]
+    end
+    constructor_name(nt)(nms, v)
 end
 
 # TODO: More merge methods
@@ -172,15 +176,19 @@ Base.values(nt::AbstractColumnFrame) = vals(nt)
 Base.haskey(nt::AbstractColumnFrame, key::Integer) = key in 1:length(nt)
 Base.haskey(nt::AbstractColumnFrame, key::Symbol) = key in Base.keys(lookup(nt))
 
+_front(v::AbstractVector) = v[begin:(end-1)]
+_tail(v::AbstractVector) = v[(begin + 1):end]
+
 Base.get(nt::AbstractColumnFrame, key::Union{Integer, Symbol}, default) = isdefined(nt, key) ? getfield(nt, key) : default
 Base.get(f::Base.Callable, nt::AbstractColumnFrame, key::Union{Integer, Symbol}) = isdefined(nt, key) ? getfield(nt, key) : f()
-Base.tail(t::AbstractColumnFrame) = typeof(t)(tail(nnames(t)), tail(vals(t)))
-Base.front(t::AbstractColumnFrame) = typeof(t)(front(nnames(t)), front(vals(t)))
-Base.reverse(nt::AbstractColumnFrame) = typeof(t)(reverse(nnames(t)), reverse(vals(t)))
+
+Base.tail(t::AbstractColumnFrame) = t[(begin+1):end]
+Base.front(t::AbstractColumnFrame) = t[begin:(end-1)]
+Base.reverse(nt::AbstractColumnFrame) = constructor_name(nt)(reverse(names(nt)), reverse(vals(nt)))
 
 function Base.structdiff(a::AbstractColumnFrame, b::AbstractColumnFrame)
-    names = diff(a.index.nms, b.index.nms)
-    a[names]
+    nms = setdiff(names(a), names(b))
+    a[nms]
 end
 
 function Base.setindex(nt::AbstractColumnFrame, v, idx::Symbol)

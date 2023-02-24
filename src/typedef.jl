@@ -36,6 +36,7 @@ function check_cols(nms, cols)
         end
     end
 end
+check_cols(t::AbstractColumnFrame) = check_cols(names(t), vals(t))
 
 function ColumnFrame(nms::Vector{Symbol}, cols::V) where {V<:Union{AbstractVector{<:AbstractVector}, AbstractVector{AbstractVector}}}
     check_cols(nms, cols)
@@ -64,6 +65,7 @@ constructor_name(t::ColumnFrame) = ColumnFrame
 constructor_name(t::Type{ColumnFrame{V}}) where {V} = ColumnFrame
 
 function Base.show(io::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) where {V}
+    check_cols(t)
     io = IOContext(io, :compact=>get(io, :compact, true), :displaysize => (10, 10))
     num_elements = length(t)
     m = _ismutable(t) ? "Mutable" : "Immutable"

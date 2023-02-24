@@ -26,13 +26,19 @@ end
 
     @test_throws MethodError ColumnFrame(a = 1, b = 2)
     @test_throws DimensionMismatch ColumnFrame(a = [1, 2], b = [1])
+
+    # Show error
+    s = ColumnFrame(a = [1, 2], b = [3, 4]);
+    values(s)[1] = [1]
+    io = IOBuffer()
+    # TODO: Figure out show method
+    @test_throws DimensionMismatch show(io, "text/plain", s)
 end
 
 @testset "constructor with named tuple" begin
     s = ColumnFrame(a = [1, 2], b = [3, 4])
-    nt = (a = [1, 2], b = p3, 4)
+    nt = (a = [1, 2], b = [3, 4])
     @test NamedTuple(s) == nt
-    @test convert(ColumnFrame, nt) == s
 end
 
 @testset "construction and copying" begin
@@ -67,30 +73,43 @@ end
     s = ColumnFrame(; a = x, b = y)
     @test s[1] === x
     @test s[:a] === x
-    @test s[(:a, :b)] == s
-    @test s[[:a, :b]] == s
+    @test s["a"] === x
 
-    @test s[[(1, 2)]] == s
+    @test s[(:a, :b)] == s
+    @test s[(1, 2)] == s
+    @test s[(true, false)] == ColumnFrame(a = [1, 2, 3])
+    @test s[("a", "b")] == s
+
+    @test s[[:a, :b]] == s
     @test s[[1, 2]] == s
-    @test s[[1, 0]] == ColumnFrame(a = [1, 2, 3])
-    @test s[(1, 0)] == ColumnFrame(a = [1, 2, 3])
+    @test s[[true, false]] == ColumnFrame(a = [1, 2, 3])
+    @test s[["a", "b"]] == s
+
     t = s[:]
     @test t == s
-    @test t.a !== s.a
+    @test t.a === s.a
     @test getfield(t, :vals) !== getfield(s, :vals)
     t = copy(s)
     @test t == s
-    @test t.a !== s.a
+    @test t.a === s.a
     @test getfield(t, :vals) !== getfield(s, :vals)
 end
 
-@testset "empty" begins
+@testset "indexing errors" begin
+    s = ColumnFrame(a = [1, 2], b = ["x", "y"])
+    @test_throws KeyError s[:z]
+    @test_throws KeyError s.z
+    @test_throws BoundsError s[3]
+    @test_throws KeyError s[[:a, :z]]
+end
+
+@testset "empty" begin
     s = ColumnFrame()
     @test isempty(s)
     @test empty(ColumnFrame(a = [1, 2])) == s
 end
 
-@testset "merging" begins
+@testset "merging" begin
     ref = ColumnFrame(a = [1, 2], b = [3, 4])
     s1 = ColumnFrame(a = [1, 2])
     s2 = ColumnFrame(b = [3, 4])
@@ -100,7 +119,7 @@ end
     @test merge(nt, s2) == (a = [1, 2], b = [3, 4])
 end
 
-@test "type info" begin
+@testset "type info" begin
     s_narrow = ColumnFrame(a = [1, 2], b = [3, 4])
     s_abstract = ColumnFrame([:a, :b], AbstractVector[[1, 2], [3, 4]])
     s_hetero = ColumnFrame(a = [1, 2], b = 3:4)
@@ -170,10 +189,44 @@ end
     end
     @test t == ColumnFrame(a = [2, 3], b = [4, 5])
 
+    t = map(s1) do col
+        1
+    end
+    @test t == ColumnFrame(a = [1], b = [1])
+
+    t = map(t -> "x", s1)
+    @test t == ColumnFrame(a = ["x"], b = ["x"])
     t = map(+, s1, s2)
     @test t == ColumnFrame(a = [101, 202], b = [303, 404])
 
-    t = map(+ s1, s2, s3)
+    t = map(+, s1, s2, s3)
+    @test t == ColumnFrame(a = [1101, 2202], b = [3303, 4404])
 end
+
+@testset "dict interface" begin
+    s = ColumnFrame(a = [1, 2], b = [3, 4])
+    @test keys(s) == [:a, :b]
+    @test values(s) == [[1, 2], [3, 4]]
+    @test haskey(s, :a) == true
+    @test haskey(s, :z) == false
+    @test haskey(s, 1) == true
+    @test haskey(s, 40) == false
+end
+
+@testset "misc namedtuple features" begin
+    s = ColumnFrame(a = [1, 2], b = [3, 4], c = [5, 6])
+    @test Base.tail(s) == ColumnFrame(b = [3, 4], c = [5, 6])
+    @test Base.front(s) == ColumnFrame(a = [1, 2], b = [3, 4])
+
+    t = ColumnFrame(b = [100, 100], z = [600, 700])
+    @test Base.structdiff(s, t) == ColumnFrame(a = [1, 2], c = [5, 6])
+    @test Base.setindex(s, [100, 200], :d) ==
+        ColumnFrame(a = [1, 2], b = [3, 4], c = [5, 6], d = [100, 200])
+
+    @test Base.setindex(s, [100, 200], :a) ==
+        ColumnFrame(a = [100, 200], b = [3, 4], c = [5, 6])
+end
+
+##
 
 

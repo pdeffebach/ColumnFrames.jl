@@ -70,12 +70,13 @@ function print_col(io, padded_name, col, allowed_width)
     j = 1
     print(io, padded_name)
     print(io, " [")
+    width = width + textwidth(padded_name) + 2
     len_col = length(col)
     while j <= len_col
         item = sprint(show, col[j]; context = io)
         width = width + textwidth(item) + 2 # The comma and space below
-        if width > (allowed_width - 4)
-            print(io, "...]")
+        if width > (allowed_width - 1)
+            print(io, "⋯")
             break
         elseif j == len_col
             print(io, item, "]")
@@ -96,22 +97,23 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
 
     io = IOContext(io_buf,
         :compact=>get(io_out, :compact, true),
-        :displaysize => get(io_out, :displaysize, (24, 80)),
-        :limit=>true)
+        :displaysize => get(io_out, :displaysize, displaysize(io_out)),
+        :limit=>get(io_out, :typeinfo, true),
+        :colo=>get(io_out, :color, true))
 
 
     m = _ismutable(t) ? "MutableColumnFrame" : "ColumnFrame"
     println(io, "$(length(first(cols))) by $(numcols) $m")
 
 
-    allowed_height = io[:displaysize][1]
-    allowed_width = io[:displaysize][2]
+    allowed_height = min(20, io[:displaysize][1])
+    allowed_width = min(100, io[:displaysize][2])
 
     two_part = numcols > 20
     if two_part
         total_show = min(numcols, allowed_height - 2) # For line above and middle ...
         inds_side = div(total_show, 2)
-        inds = vcat(1:inds_side, (numcols-inds_side):length(t))
+        inds = vcat(1:inds_side, (numcols - (total_show - inds_side) + 1):numcols)
         split_val = inds_side
     else
         inds = 1:min(numcols, allowed_height-1)
@@ -131,7 +133,7 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
         print_col(io, padded_names[i], cols[inds[i]], allowed_width)
         i < max_ind && println(io)
         if i == split_val
-            println(io, "...")
+            println(io, "⋮")
         end
     end
     print(io_out, String(take!(io_buf)))

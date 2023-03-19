@@ -22,3 +22,5 @@ The ColumnFrames.jl seeks the best of both worlds. It provides the `AbstractColu
 
 The `AbstractColumnFrame` type has two sub-types: `ColumnFrame` and `MutableColumnFrame`. They are both indexed collections of columns, similar to a `DataFrame`. `MutableColumnFrame` allows adding columns. 
 
+## Constructor
+

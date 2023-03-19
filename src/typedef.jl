@@ -64,23 +64,77 @@ vals(t::ColumnFrame) = getfield(t, :vals)
 constructor_name(t::ColumnFrame) = ColumnFrame
 constructor_name(t::Type{ColumnFrame{V}}) where {V} = ColumnFrame
 
-function Base.show(io::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) where {V}
-    check_cols(t)
-    io = IOContext(io, :compact=>get(io, :compact, true), :displaysize => (10, 10))
-    num_elements = length(t)
-    m = _ismutable(t) ? "Mutable" : "Immutable"
-    println(io, "$m ColumnFrame with $num_elements columns and column type $(eltype(V)):")
-    if length(t) <= 20
-        for i in eachindex(names(t))
-            println(io, names(t)[i], ":  ", vals(t)[i])
+
+function print_col(io, padded_name, col, allowed_width)
+    width = 0
+    j = 1
+    print(io, padded_name)
+    print(io, " [")
+    len_col = length(col)
+    while j <= len_col
+        item = sprint(show, col[j]; context = io)
+        width = width + textwidth(item) + 2 # The comma and space below
+        if width > (allowed_width - 4)
+            print(io, "...]")
+            break
+        elseif j == len_col
+            print(io, item, "]")
+        else
+            print(io, item, ", ")
         end
+        j = j + 1
+    end
+end
+
+function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) where {V}
+    check_cols(t)
+
+    cols = vals(t)
+    numcols = length(t)
+
+    io_buf = IOBuffer()
+
+    io = IOContext(io_buf,
+        :compact=>get(io_out, :compact, true),
+        :displaysize => get(io_out, :displaysize, (24, 80)),
+        :limit=>true)
+
+
+    m = _ismutable(t) ? "MutableColumnFrame" : "ColumnFrame"
+    println(io, "$(length(first(cols))) by $(numcols) $m")
+
+
+    allowed_height = io[:displaysize][1]
+    allowed_width = io[:displaysize][2]
+
+    two_part = numcols > 20
+    if two_part
+        total_show = min(numcols, allowed_height - 2) # For line above and middle ...
+        inds_side = div(total_show, 2)
+        inds = vcat(1:inds_side, (numcols-inds_side):length(t))
+        split_val = inds_side
     else
-        @show inds = vcat(1:10, (length(t)-10):length(t))
-        for i in inds
-            println(io, names(t)[i], ":  ", vals(t)[i])
-            i == 10 && println(io, "...")
+        inds = 1:min(numcols, allowed_height-1)
+        split_val = -1
+    end
+
+    less_height = numcols < allowed_height
+
+    subnames = string.(names(t)[inds])
+    textwidths = textwidth.(subnames)
+    maxwidth = maximum(textwidths)
+    padded_names = rpad.(subnames, maxwidth)
+
+    i = 1
+    max_ind = last(eachindex(inds))
+    for i in eachindex(inds)
+        print_col(io, padded_names[i], cols[inds[i]], allowed_width)
+        i < max_ind && println(io)
+        if i == split_val
+            println(io, "...")
         end
     end
+    print(io_out, String(take!(io_buf)))
 end
 
 struct MutableColumnFrame{V <: AbstractVector} <: AbstractColumnFrame{V}
@@ -98,15 +152,21 @@ constructor_name(t::Type{MutableColumnFrame{V}}) where {V} = MutableColumnFrame
 _ismutable(t::AbstractColumnFrame) = false
 _ismutable(t::MutableColumnFrame) = true
 
+# deepcopy the lookup when we construct directly
 function MutableColumnFrame(t::ColumnFrame{V}) where {V}
-    d = copy(lookup(t))
+    d = deepcopy(lookup(t))
     n = copy(names(t))
     v = convert(Vector{AbstractVector}, vals(t))
     MutableColumnFrame{typeof(v)}(Index(d, n), v)
 end
 
+function nocopy_mutablecolumnframe(t::ColumnFrame{V}) where {V}
+    v = convert(Vector{AbstractVector}, vals(t))
+    MutableColumnFrame{typeof(v)}(getfield(t, :index), v)
+end
+
 function MutableColumnFrame(args...; kwargs...)
-    MutableColumnFrame(ColumnFrame(args...; kwargs...))
+    nocopy_mutablecolumnframe(ColumnFrame(args...; kwargs...))
 end
 
 function ColumnFrame(t::MutableColumnFrame)

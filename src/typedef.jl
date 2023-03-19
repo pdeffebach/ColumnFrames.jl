@@ -109,4 +109,8 @@ function MutableColumnFrame(args...; kwargs...)
     MutableColumnFrame(ColumnFrame(args...; kwargs...))
 end
 
+function ColumnFrame(t::MutableColumnFrame)
+    ColumnFrame(names(t), vals(t))
+end
+
 

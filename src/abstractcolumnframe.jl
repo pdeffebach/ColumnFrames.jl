@@ -1,27 +1,66 @@
 Base.length(t::AbstractColumnFrame) = length(vals(t))
+
 Base.iterate(t::AbstractColumnFrame, iter = 1) = iter > length(t) ? nothing : (getindex(t, iter), iter + 1)
+
 Base.rest(t::AbstractColumnFrame) = t
+
 function Base.rest(t::AbstractColumnFrame, i::Int)
     rest_syms = Base.rest(names(t), i)
     rest_vals = Base.rest(vals(t), i)
     constructor_name(t)(rest_syms, rest_vals)
 end
 
-Base.propertynames(t::AbstractColumnFrame) = names(t)
+"""
+    Base.propertynames(t::AbstractColumnFrame)
+
+Return a freshly allocated Vector{Symbol} of names of columns
+contained in `t`. Deviates from `propertynames(::NamedTuple)`
+by returning a `Vector` instead of a `Tuple`.
+"""
+Base.propertynames(t::AbstractColumnFrame) = copy(names(t))
 
 Base.firstindex(t::AbstractColumnFrame) = 1
+
 Base.lastindex(t::AbstractColumnFrame) = length(t)
 
-Base.getindex(t::AbstractColumnFrame, i::Symbol) = getindex(vals(t), lookup(t)[i])
+Base.getindex(t::AbstractColumnFrame, s::Symbol) = getindex(vals(t), lookup(t)[s])
+
+"""
+    Base.getindex(t::AbstractColumnFrame, s::AbstractString)
+
+Return column `s` from `t`. Deviates from `NamedTuple`, which
+does not allow string indexing.
+"""
 Base.getindex(t::AbstractColumnFrame, s::AbstractString) = getindex(t, Symbol(s))
+
 Base.getindex(t::AbstractColumnFrame, i::Int) = getindex(vals(t), i)
 
 
-# TODO: Document that this is a deviation from the base NamedTuple.jl interface
+"""
+    Base.copy(t::AbstractColumnFrame)
+
+Create a copy of `t`, without copying the underlying columns.
+Deviates from `NamedTuple`, which does not support `copy`.
+"""
 Base.copy(t::AbstractColumnFrame) = constructor_name(t)(copy(names(t)), copy(vals(t)))
+
+"""
+    Base.getindex(t::MutableColumnFrame, ::Colon)
+
+Create a copy of `t`, without copying the underlying columns. Deviates
+from `NamedTuple` which does not support indexing with `Colon`.
+"""
 Base.getindex(t::AbstractColumnFrame, ::Colon) = copy(t)
 
+
 Base.getproperty(t::AbstractColumnFrame, s::Symbol) = getindex(t, s)
+
+"""
+    Base.getproperty(t::AbstractColumnFrame, s::AbstractString)
+
+Return column `s` from `t`. Deviates from `NamedTuple`, which
+does not allow string `getproperty` use.
+"""
 Base.getproperty(t::AbstractColumnFrame, s::AbstractString) = getindex(t, Symbol(s))
 
 function Base.getindex(t::AbstractColumnFrame, syms::Tuple{Vararg{Symbol}})
@@ -30,20 +69,38 @@ function Base.getindex(t::AbstractColumnFrame, syms::Tuple{Vararg{Symbol}})
     new_vals = vals(t)[new_inds]
     constructor_name(t)(syms_v, new_vals)
 end
-Base.getindex(t::AbstractColumnFrame, sts::Tuple{Vararg{<:AbstractString}}) =
-    getindex(t, Symbol.(sts))
 
+"""
+    Base.getindex(t::AbstractColumnFrame, strs::Tuple{Vararg{<:AbstractString}})
+
+Returns columns `strs` from `t`. Deviates from `NamedTuple` which
+does not allow indexing with strings.
+"""
+Base.getindex(t::AbstractColumnFrame, strs::Tuple{Vararg{<:AbstractString}}) =
+    getindex(t, Symbol.(strs))
 
 function Base.getindex(t::AbstractColumnFrame, syms::AbstractVector{Symbol})
     new_inds = [lookup(t)[sym] for sym in syms]
     new_vals = vals(t)[new_inds]
     constructor_name(t)(syms, new_vals)
 end
-Base.getindex(t::AbstractColumnFrame, sts::AbstractVector{<:AbstractString}) =
-    getindex(t, Symbol.(sts))
+
+"""
+    Base.getindex(t::AbstractColumnFrame, sts::AbstractVector{<:AbstractString})
+
+Returns columns `strs` from `t`. Deviates from `NamedTuple` which
+does not allow indexing with strings.
+"""
+Base.getindex(t::AbstractColumnFrame, strs::AbstractVector{<:AbstractString}) =
+    getindex(t, Symbol.(strs))
 
 
-# TODO: Document that this is a deviation from the base NamedTuple.jl interface
+"""
+    Base.getindex(t::AbstractColumnFrame, inds::AbstractVector{<:Integer})
+
+Returns columns `inds` from `t`. Deviates from `NamedTuple` which
+does not allow indexing with collections of integers.
+"""
 function Base.getindex(t::AbstractColumnFrame, inds::AbstractVector{<:Integer})
     new_syms = names(t)[inds]
     new_vals = vals(t)[inds]
@@ -51,18 +108,26 @@ function Base.getindex(t::AbstractColumnFrame, inds::AbstractVector{<:Integer})
 end
 
 
-# TODO: Document that this is a deviation from the base NamedTuple.jl interface
+"""
+    Base.getindex(t::AbstractColumnFrame, inds::Tuple{Vararg{<:Integer}})
+
+Returns columns `inds` from `t`. Deviates from `NamedTuple` which
+does not allow indexing with collections of integers.
+"""
 Base.getindex(t::AbstractColumnFrame, inds::Tuple{Vararg{<:Integer}}) =
     Base.getindex(t, collect(inds))
 
 Base.indexed_iterate(t::AbstractColumnFrame, i::Int, state=1) = (getindex(t, i), i+1)
+
 Base.isempty(t::AbstractColumnFrame) = isempty(vals(t))
+
+
 Base.empty(t::AbstractColumnFrame) = constructor_name(t)(Symbol[], AbstractVector[])
 
 Base.prevind(t::AbstractColumnFrame, i::Integer) = Int(i)-1
 
 Base.nextind(t::AbstractColumnFrame, i::Integer) = Int(i)+1
-# TODO: Understand why this doesn't work more intuitively
+
 Base.NamedTuple(t::AbstractColumnFrame) = NamedTuple(pairs(t))
 
 function merge_names(an::AbstractVector{Symbol}, bn::AbstractVector{Symbol})
@@ -109,7 +174,9 @@ function Base.merge(a::AbstractColumnFrame, itr)
     Base.merge(a, ColumnFrame(names, vals))
 end
 
+
 Base.merge(a::AbstractColumnFrame, b::NamedTuple) = merge(a, pairs(b))
+
 Base.merge(a::NamedTuple, b::AbstractColumnFrame) = merge(a, pairs(b))
 
 Base.eltype(::Type{<:AbstractColumnFrame{V}}) where {V} = eltype(V)

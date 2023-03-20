@@ -78,7 +78,7 @@ end
 
 our_sprint(col::AbstractVector, io) = sprint.(show, col; context = io)
 our_sprint(col::AbstractVector{<:AbstractString}, io) =
-    sprint.(show, truncatestring.(col, 10); context = io)
+    [@sprintf("%s", truncatestring(c, 10)) for c in col]
 
 our_sprintf(c) = @sprintf("%.5g", c)
 our_sprint(col::AbstractVector{<:Real}, io) =
@@ -115,7 +115,7 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
 
 
     m = _ismutable(t) ? "MutableColumnFrame" : "ColumnFrame"
-    size_str = @sprintf("%d×%d %s", length(first(cols)), numcols, nameof(typeof(t)))
+    size_str = @sprintf("%d×%d %s", numrows, numcols, nameof(typeof(t)))
     println(io, size_str)
 
 
@@ -124,29 +124,28 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
 
     two_part = numrows > 20
     if two_part
-        total_show = min(numcols, allowed_height - 2) # For line above and middle ...
+        total_show = min(numrows, allowed_height - 2) # For line above and middle ...
         inds_side = div(total_show, 2)
-        inds = vcat(1:inds_side, (numcols - (total_show - inds_side) + 1):numcols)
+        inds = vcat(1:inds_side, (numrows - (total_show - inds_side) + 1):numrows)
         split_val = inds_side
     else
-        inds = 1:min(numcols, allowed_height-1)
+        inds = 1:min(numrows, allowed_height-1)
         split_val = -1
     end
 
-    less_height = numrows < allowed_height
+    less_height = (numrows+2) < allowed_height # Header row and header line
 
-    # Step 1: Figure out how many columns to print
     width = 0
     j = 1
     row_cols, row_width = rpad_cols(inds, "row", io)
     padded_cols = [row_cols]
-    width = width + row_width
+    width = width + row_width + 2 # two spaces
     while j <= numcols
         colname = colnames[j]
         col = cols[j][inds]
         padded_col, colwidth = rpad_cols(col, colname, io)
         width = width + colwidth + 2 # 2 spaces in between
-        if width > (allowed_width - 1)
+        if width > (allowed_width - 3) # Two spaces and the dots
             break
         else
             push!(padded_cols, padded_col)

@@ -119,12 +119,12 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
     println(io, size_str)
 
 
-    allowed_height = min(20, io[:displaysize][1])
+    allowed_height = min(22, io[:displaysize][1])
     allowed_width = min(100, io[:displaysize][2])
 
     two_part = numrows > 20
     if two_part
-        total_show = min(numrows, allowed_height - 2) # For line above and middle ...
+        total_show = min(numrows, allowed_height-2) # For line above and middle ...
         inds_side = div(total_show, 2)
         inds = vcat(1:inds_side, (numrows - (total_show - inds_side) + 1):numrows)
         split_val = inds_side

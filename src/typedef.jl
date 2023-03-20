@@ -145,7 +145,7 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
         col = cols[j][inds]
         padded_col, colwidth = rpad_cols(col, colname, io)
         width = width + colwidth + 2 # 2 spaces in between
-        if width > (allowed_width - 3) # Two spaces and the dots
+        if width > (allowed_width - 3) # 2 spaces and the dots
             break
         else
             push!(padded_cols, padded_col)

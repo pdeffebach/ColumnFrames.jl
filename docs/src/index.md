@@ -24,3 +24,17 @@ The `AbstractColumnFrame` type has two sub-types: `ColumnFrame` and `MutableColu
 
 ## Constructor
 
+```@setup all
+using ColumnFrames
+```
+
+```@repl all
+using ColumnFrames
+s = ColumnFrame(a = [1, 2, 3], b = [4, 5, 6])
+```
+
+
+```@repl all
+ColumnFrame(a = [5, 6])
+```
+

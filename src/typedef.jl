@@ -64,27 +64,37 @@ vals(t::ColumnFrame) = getfield(t, :vals)
 constructor_name(t::ColumnFrame) = ColumnFrame
 constructor_name(t::Type{ColumnFrame{V}}) where {V} = ColumnFrame
 
-
-function print_col(io, padded_name, col, allowed_width)
-    width = 0
-    j = 1
-    print(io, padded_name)
-    print(io, " [")
-    width = width + textwidth(padded_name) + 2
-    len_col = length(col)
-    while j <= len_col
-        item = sprint(show, col[j]; context = io)
-        width = width + textwidth(item) + 2 # The comma and space below
-        if width > (allowed_width - 1)
-            print(io, "⋯")
-            break
-        elseif j == len_col
-            print(io, item, "]")
-        else
-            print(io, item, ", ")
+function truncatestring(s::AbstractString, truncstring::Int)
+    truncstring <= 0 && return s
+    totalwidth = 0
+    for (i, c) in enumerate(s)
+        totalwidth += textwidth(c)
+        if totalwidth > truncstring
+            return first(s, i-1) * '…'
         end
-        j = j + 1
     end
+    return s
+end
+
+our_sprint(col::AbstractVector, io) = sprint.(show, col; context = io)
+our_sprint(col::AbstractVector{<:AbstractString}, io) =
+    sprint.(show, truncatestring.(col, 10); context = io)
+
+our_sprintf(c) = @sprintf("%.5g", c)
+our_sprint(col::AbstractVector{<:Real}, io) =
+    our_sprintf.(col)
+
+function rpad_cols(col, colname, io)
+    cols_str = our_sprint(col, io)
+    maxwidthcol = max(textwidth(colname), maximum(textwidth.(cols_str)))
+    rpad.(cols_str, maxwidthcol)
+    if col isa AbstractVector{<:AbstractString}
+        padded_cols = rpad.(cols_str, maxwidthcol)
+    else
+        padded_cols = lpad.(cols_str, maxwidthcol)
+    end
+    out = vcat([rpad(colname, maxwidthcol), repeat("─", maxwidthcol)], padded_cols)
+    return out, maxwidthcol
 end
 
 function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) where {V}
@@ -92,6 +102,8 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
 
     cols = vals(t)
     numcols = length(t)
+    numrows = length(first(cols))
+    colnames = string.(names(t))
 
     io_buf = IOBuffer()
 
@@ -103,13 +115,14 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
 
 
     m = _ismutable(t) ? "MutableColumnFrame" : "ColumnFrame"
-    println(io, "$(length(first(cols))) by $(numcols) $m")
+    size_str = @sprintf("%d×%d %s", length(first(cols)), numcols, nameof(typeof(t)))
+    println(io, size_str)
 
 
     allowed_height = min(20, io[:displaysize][1])
     allowed_width = min(100, io[:displaysize][2])
 
-    two_part = numcols > 20
+    two_part = numrows > 20
     if two_part
         total_show = min(numcols, allowed_height - 2) # For line above and middle ...
         inds_side = div(total_show, 2)
@@ -120,8 +133,45 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
         split_val = -1
     end
 
-    less_height = numcols < allowed_height
+    less_height = numrows < allowed_height
 
+    # Step 1: Figure out how many columns to print
+    width = 0
+    j = 1
+    row_cols, row_width = rpad_cols(inds, "row", io)
+    padded_cols = [row_cols]
+    width = width + row_width
+    while j <= numcols
+        colname = colnames[j]
+        col = cols[j][inds]
+        padded_col, colwidth = rpad_cols(col, colname, io)
+        width = width + colwidth + 2 # 2 spaces in between
+        if width > (allowed_width - 1)
+            break
+        else
+            push!(padded_cols, padded_col)
+        end
+        j = j + 1
+    end
+    if j < numcols
+        end_dots = vcat(["⋯", "─"], ["⋯" for i in 1:length(inds)])
+        push!(padded_cols, end_dots)
+    end
+
+    for i in 1:(length(inds) + 2) # Column line and header line
+        for j in eachindex(padded_cols)
+            print(io, padded_cols[j][i], "  ")
+        end
+        println(io)
+        if (i-2) == split_val
+            println(io, "⋯")
+        end
+    end
+
+    print(io_out, String(take!(io_buf)))
+end
+
+#=
     subnames = string.(names(t)[inds])
     textwidths = textwidth.(subnames)
     maxwidth = maximum(textwidths)
@@ -137,7 +187,7 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
         end
     end
     print(io_out, String(take!(io_buf)))
-end
+=#
 
 struct MutableColumnFrame{V <: AbstractVector} <: AbstractColumnFrame{V}
     index::Index

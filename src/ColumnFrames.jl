@@ -1,6 +1,6 @@
 module ColumnFrames
 
-using Tables
+using Tables, Printf
 
 export AbstractColumnFrame, ColumnFrame, MutableColumnFrame
 

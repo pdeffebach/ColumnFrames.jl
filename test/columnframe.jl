@@ -5,12 +5,12 @@ using Test
 
 @testset "constructors" begin
     s = ColumnFrame(; a = [1, 2], b = [3, 4])
-    t = ColumnFrame([:a, :b], [[1, 2], [3, 4]])
+    t = ColumnFrame([[1, 2], [3, 4]], [:a, :b])
     @test t == s
     t = ColumnFrame((; a = [1, 2], b = [3, 4]))
     @test t == s
     t = ColumnFrame((;)) # Empty named tuple
-    @test t == ColumnFrame(Symbol[], AbstractVector[])
+    @test t == ColumnFrame(AbstractVector[], Symbol[])
 
     d = Dict([:a => [1, 2], :b => [3, 4]])
     t = ColumnFrame(pairs(d))
@@ -28,8 +28,8 @@ using Test
 end
 
 @testset "constructor errors" begin
-    @test_throws MethodError ColumnFrame([:a, :b], [1, 2])
-    @test_throws DimensionMismatch ColumnFrame([:a, :b], [[1, 2], [1]])
+    @test_throws MethodError ColumnFrame([1, 2], [:a, :b])
+    @test_throws DimensionMismatch ColumnFrame([[1, 2], [1]], [:a, :b])
 
     @test_throws MethodError ColumnFrame(a = 1, b = 2)
     @test_throws DimensionMismatch ColumnFrame(a = [1, 2], b = [1])
@@ -128,21 +128,21 @@ end
 
 @testset "type info" begin
     s_narrow = ColumnFrame(a = [1, 2], b = [3, 4])
-    s_abstract = ColumnFrame([:a, :b], AbstractVector[[1, 2], [3, 4]])
+    s_abstract = ColumnFrame(AbstractVector[[1, 2], [3, 4]], [:a, :b])
     s_hetero = ColumnFrame(a = [1, 2], b = 3:4)
     s_string = ColumnFrame(a = [1, 2], b = ["x", "y"])
 
-    @test eltype(s_narrow) == Vector{Int}
-    @test valtype(s_narrow) == Vector{Int}
+    @test eltype(s_narrow) == AbstractVector
+    @test valtype(s_narrow) == AbstractVector
 
     @test eltype(s_abstract) == AbstractVector
     @test valtype(s_abstract) == AbstractVector
 
-    @test eltype(s_hetero) == AbstractVector{Int}
-    @test valtype(s_hetero) == AbstractVector{Int}
+    @test eltype(s_hetero) == AbstractVector
+    @test valtype(s_hetero) == AbstractVector
 
-    @test eltype(s_string) == Vector
-    @test valtype(s_string) == Vector
+    @test eltype(s_string) == AbstractVector
+    @test valtype(s_string) == AbstractVector
 
     @test keytype(s_narrow) == Symbol
 end
@@ -218,6 +218,7 @@ end
     @test haskey(s, :z) == false
     @test haskey(s, 1) == true
     @test haskey(s, 40) == false
+    @test haskey(s, "a") == true
 end
 
 @testset "misc namedtuple features" begin

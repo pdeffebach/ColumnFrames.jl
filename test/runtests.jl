@@ -8,7 +8,8 @@ anyerrors = false
 my_tests = [
     "columnframe.jl",
     "mutablecolumnframe.jl",
-    "mutable.jl"
+    "mutable.jl",
+    "tables.jl"
 ]
 
 println("Running tests:")

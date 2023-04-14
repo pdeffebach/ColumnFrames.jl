@@ -1,4 +1,30 @@
-abstract type AbstractColumnFrame{V<:AbstractVector{<:AbstractVector}} end
+"""
+`AbstractColumnFrame`
+
+
+An abstract type for which all concrete types expose a
+`NamedTuple`-like interface for working with tabular data.
+
+An `AbstractColumnFrame` is a two-dimensional table with
+`Symbol`s for column names. All columns must be the
+same length.
+
+There are two sub-types of `AbstractColumnFrame`, `ColumnFrame`,
+whose structure cannot be altered, and `MutableColumnFrame`,
+which behaves exactly the same as a `ColumnFrame` except columns
+can be added and removed.
+
+`AbstractColumnFrame` delibrately exposes a minimal interface.
+They behave identical to a `NamedTuple` of vectors with few
+deviations in order to
+
+1. Avoid long compilation times by having type information
+   of the columns and names stored as part of the type
+
+2. Provide select convenience features for easier use of
+   tabular data
+"""
+abstract type AbstractColumnFrame end
 
 
 # Shared
@@ -12,10 +38,16 @@ function Index(names::Vector{Symbol})
     return Index(lookup, names)
 end
 
-## Im_ismutable, tabular
-struct ColumnFrame{V <: AbstractVector} <: AbstractColumnFrame{V}
+"""
+    ColumnFrame <: AbstractColumnFrame
+
+A two-dimensional table with an API similar to that of a
+`NamedTuple` of `Vector`s. Once created, columns cannot be
+added or removed.
+"""
+struct ColumnFrame <: AbstractColumnFrame
     index::Index
-    vals::V
+    vals::Vector{AbstractVector}
 end
 
 function check_cols(nms, cols)
@@ -38,31 +70,78 @@ function check_cols(nms, cols)
 end
 check_cols(t::AbstractColumnFrame) = check_cols(names(t), vals(t))
 
-function ColumnFrame(nms::Vector{Symbol}, cols::V) where {V<:Union{AbstractVector{<:AbstractVector}, AbstractVector{AbstractVector}}}
+"""
+    ColumnFrame(cols::V, nms::Vector{Symbol}) where {V<:AbstractVector{<:AbstractVector}}}
+
+Construct a `ColumnFrame` with names `nms` and column `cols`.
+Allocates a new container for columns, but does not copy underlying
+columns directly.
+
+```
+julia> ColumnFrame([[1, 2], [3, 4]], [:a, :b])
+2×2 ColumnFrame
+row  a  b
+───  ─  ─
+  1  1  3
+  2  2  4
+```
+"""
+function ColumnFrame(cols::V, nms::Vector{Symbol}) where {V<:AbstractVector{<:AbstractVector}}
     check_cols(nms, cols)
-    ColumnFrame{V}(Index(nms), cols)
+    v = AbstractVector[ci for ci in cols]
+    ColumnFrame(Index(copy(nms)), cols)
 end
 
+"""
+    ColumnFrame(; kwargs...)
+
+Construct a `ColumnFrame` from `kwargs` in the form of `name => col` pairs
+Does not copy columns directly.
+```
+julia> ColumnFrame(; a = [1, 2], b = [3, 4])
+2×2 ColumnFrame
+row  a  b
+───  ─  ─
+  1  1  3
+  2  2  4
+```
+"""
 function ColumnFrame(; kwargs...)
     ColumnFrame((; kwargs...,))
 end
 
+"""
+    ColumnFrame(nt::NamedTuple)
+
+Construct a `ColumnFrame` from a `NamedTuple` as input.
+Does not copy columns directly.
+```
+julia> nt = (a = [1, 2], b = [3, 4]);
+
+julia> ColumnFrame(nt)
+2×2 ColumnFrame
+row  a  b
+───  ─  ─
+  1  1  3
+  2  2  4
+```
+"""
 function ColumnFrame(nt::NamedTuple)
     nms = collect(propertynames(nt))
     vals = collect(values(nt))
-    ColumnFrame(nms, vals)
+    ColumnFrame(vals, nms)
 end
 
 # Special case for empty named tuple
 function ColumnFrame(nt::NamedTuple{(), Tuple{}})
-    ColumnFrame(Symbol[], AbstractVector[])
+    ColumnFrame(AbstractVector[], Symbol[])
 end
 
 names(t::ColumnFrame) = getfield(getfield(t, :index), :nms)
 lookup(t::ColumnFrame) = getfield(getfield(t, :index), :lookup)
 vals(t::ColumnFrame) = getfield(t, :vals)
 constructor_name(t::ColumnFrame) = ColumnFrame
-constructor_name(t::Type{ColumnFrame{V}}) where {V} = ColumnFrame
+constructor_name(t::Type{ColumnFrame}) = ColumnFrame
 
 function truncatestring(s::AbstractString, truncstring::Int)
     truncstring <= 0 && return s
@@ -76,17 +155,18 @@ function truncatestring(s::AbstractString, truncstring::Int)
     return s
 end
 
-our_sprint(col::AbstractVector, io) = sprint.(show, col; context = io)
-our_sprint(col::AbstractVector{<:AbstractString}, io) =
-    [@sprintf("%s", truncatestring(c, 10)) for c in col]
+our_sprint(col::AbstractVector, io, w) = sprint.(show, col; context = io)
+our_sprint(col::AbstractVector{<:AbstractString}, io, w) =
+    [@sprintf("%s", truncatestring(c, w)) for c in col]
 
-our_sprintf(c) = @sprintf("%.5g", c)
+our_sprintf(c) = @sprintf("%.5g", c, w)
 our_sprint(col::AbstractVector{<:Real}, io) =
     our_sprintf.(col)
 
 function rpad_cols(col, colname, io)
-    cols_str = our_sprint(col, io)
-    maxwidthcol = max(textwidth(colname), maximum(textwidth.(cols_str)))
+    maxw_str = max(textwidth(colname), 10)
+    cols_str = our_sprint(col, io, maxw_str)
+    maxwidthcol = max(textwidth(colname), maximum(textwidth.(cols_str); init = 0))
     rpad.(cols_str, maxwidthcol)
     if col isa AbstractVector{<:AbstractString}
         padded_cols = rpad.(cols_str, maxwidthcol)
@@ -97,12 +177,13 @@ function rpad_cols(col, colname, io)
     return out, maxwidthcol
 end
 
-function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) where {V}
+function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame)
     check_cols(t)
 
+
     cols = vals(t)
-    numcols = length(t)
-    numrows = length(first(cols))
+    numcols = isempty(t) ? 0 : length(t)
+    numrows = isempty(t) ? 0 : length(first(cols))
     colnames = string.(names(t))
 
     io_buf = IOBuffer()
@@ -113,11 +194,19 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
         :limit=>get(io_out, :typeinfo, true),
         :colo=>get(io_out, :color, true))
 
-
     m = _ismutable(t) ? "MutableColumnFrame" : "ColumnFrame"
+
+    if isempty(t)
+        size_str = @sprintf("0×0 %s", m)
+        print(io, size_str)
+
+        print(io_out, String(take!(io_buf)))
+        return nothing
+    end
+
+
     size_str = @sprintf("%d×%d %s", numrows, numcols, nameof(typeof(t)))
     println(io, size_str)
-
 
     allowed_height = min(22, io[:displaysize][1])
     allowed_width = min(100, io[:displaysize][2])
@@ -162,7 +251,7 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
             print(io, padded_cols[j][i], "  ")
         end
         println(io)
-        if (i-2) == split_val
+        if two_part && (i-2) == split_val
             println(io, "⋯")
         end
     end
@@ -170,58 +259,128 @@ function Base.show(io_out::IO, ::MIME"text/plain", t::AbstractColumnFrame{V}) wh
     print(io_out, String(take!(io_buf)))
 end
 
-#=
-    subnames = string.(names(t)[inds])
-    textwidths = textwidth.(subnames)
-    maxwidth = maximum(textwidths)
-    padded_names = rpad.(subnames, maxwidth)
+"""
+    ColumnFrame <: AbstractColumnFrame
 
-    i = 1
-    max_ind = last(eachindex(inds))
-    for i in eachindex(inds)
-        print_col(io, padded_names[i], cols[inds[i]], allowed_width)
-        i < max_ind && println(io)
-        if i == split_val
-            println(io, "⋮")
-        end
-    end
-    print(io_out, String(take!(io_buf)))
-=#
-
-struct MutableColumnFrame{V <: AbstractVector} <: AbstractColumnFrame{V}
+A two-dimensional table with an API similar to that of a
+`NamedTuple` of `Vector`s. Columns can be
+added or removed.
+"""
+struct MutableColumnFrame <: AbstractColumnFrame
     index::Index
-    vals::V
+    vals::Vector{AbstractVector}
+end
+
+"""
+    MutableColumnFrame(nt::NamedTuple)
+
+Construct a `MutableColumnFrame` from a `NamedTuple` as input
+Does not copy columns directly.
+
+```
+julia> nt = (a = [1, 2], b = [3, 4]);
+
+julia> MutableColumnFrame(nt)
+2×2 MutableColumnFrame
+row  a  b
+───  ─  ─
+  1  1  3
+  2  2  4
+```
+"""
+function MutableColumnFrame(nt::NamedTuple)
+    nms = collect(propertynames(nt))
+    vals = collect(values(nt))
+   MutableColumnFrame(vals, nms)
+end
+
+# Special case for empty named tuple
+function MutableColumnFrame(nt::NamedTuple{(), Tuple{}})
+    MutableColumnFrame(AbstractVector[], Symbol[])
 end
 
 names(t::MutableColumnFrame) = getfield(getfield(t, :index), :nms)
 lookup(t::MutableColumnFrame) = getfield(getfield(t, :index), :lookup)
 vals(t::MutableColumnFrame) = getfield(t, :vals)
 constructor_name(t::MutableColumnFrame) = MutableColumnFrame
-constructor_name(t::Type{MutableColumnFrame{V}}) where {V} = MutableColumnFrame
-
+constructor_name(t::Type{MutableColumnFrame}) = MutableColumnFrame
 
 _ismutable(t::AbstractColumnFrame) = false
 _ismutable(t::MutableColumnFrame) = true
 
-# deepcopy the lookup when we construct directly
-function MutableColumnFrame(t::ColumnFrame{V}) where {V}
-    d = deepcopy(lookup(t))
-    n = copy(names(t))
-    v = convert(Vector{AbstractVector}, vals(t))
-    MutableColumnFrame{typeof(v)}(Index(d, n), v)
+"""
+    MutableColumnFrame(t::ColumnFrame)
+
+Construct a `MutableColumnFrame` from an existing `ColumnFrame`
+Allocates a fresh container for columns, but does not copy the
+columns directly.
+"""
+function MutableColumnFrame(t::ColumnFrame)
+    v = AbstractVector[vi for vi in vals(t)]
+    MutableColumnFrame(v, copy(names(t)))
 end
 
-function nocopy_mutablecolumnframe(t::ColumnFrame{V}) where {V}
-    v = convert(Vector{AbstractVector}, vals(t))
-    MutableColumnFrame{typeof(v)}(getfield(t, :index), v)
+"""
+    MutableColumnFrame(; kwargs...)
+
+Construct a `MutableColumnFrame` from `kwargs` in the form of `name => col` pairs
+Does not copy columns directly.
+```
+julia> MutableColumnFrame(; a = [1, 2], b = [3, 4])
+2×2 MutableColumnFrame
+row  a  b
+───  ─  ─
+  1  1  3
+  2  2  4
+```
+"""
+function MutableColumnFrame(; kwargs...)
+    MutableColumnFrame((; kwargs...,))
 end
 
-function MutableColumnFrame(args...; kwargs...)
-    nocopy_mutablecolumnframe(ColumnFrame(args...; kwargs...))
+"""
+    MutableColumnFrame(cols::V, nms::Vector{Symbol}) where {V<:AbstractVector{<:AbstractVector}}}
+
+Construct a `MutableColumnFrame` with names `nms` and column `cols`.
+Allocates a new container for columns, but does not copy underlying
+columns directly.
+
+```
+julia> MutableColumnFrame([[1, 2], [3, 4]], [:a, :b])
+2×2 ColumnFrame
+row  a  b
+───  ─  ─
+  1  1  3
+  2  2  4
+```
+"""
+function MutableColumnFrame(cols::V, nms::Vector{Symbol}) where {V<:AbstractVector{<:AbstractVector}}
+    check_cols(nms, cols)
+    v = AbstractVector[ci for ci in cols]
+    MutableColumnFrame(Index(copy(nms)), cols)
 end
 
+"""
+    ColumnFrame(t::MutableColumnFrame)
+
+Construct a `ColumnFrame` from an existing `MutableColumnFrame`
+Allocates a fresh container for columns, but does not copy the
+columns directly.
+
+```
+julia> m = MutableColumnFrame(a = [1, 2], b = [3, 4]);
+
+julia> ColumnFrame(m)
+2×2 ColumnFrame
+row  a  b
+───  ─  ─
+  1  1  3
+  2  2  4
+```
+"""
 function ColumnFrame(t::MutableColumnFrame)
-    ColumnFrame(names(t), vals(t))
+    v = AbstractVector[vi for vi in vals(t)]
+    ColumnFrame(v, copy(names(t)))
 end
 
 

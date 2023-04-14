@@ -5,12 +5,12 @@ using Test
 
 @testset "constructors" begin
     s = MutableColumnFrame(; a = [1, 2], b = [3, 4])
-    t = MutableColumnFrame([:a, :b], [[1, 2], [3, 4]])
+    t = MutableColumnFrame([[1, 2], [3, 4]], [:a, :b])
     @test t == s
     t = MutableColumnFrame((; a = [1, 2], b = [3, 4]))
     @test t == s
     t = MutableColumnFrame((;)) # Empty named tuple
-    @test t == MutableColumnFrame(Symbol[], AbstractVector[])
+    @test t == MutableColumnFrame(AbstractVector[], Symbol[])
 
     d = Dict([:a => [1, 2], :b => [3, 4]])
     t = MutableColumnFrame(pairs(d))
@@ -28,8 +28,8 @@ using Test
 end
 
 @testset "constructor errors" begin
-    @test_throws MethodError MutableColumnFrame([:a, :b], [1, 2])
-    @test_throws DimensionMismatch MutableColumnFrame([:a, :b], [[1, 2], [1]])
+    @test_throws MethodError MutableColumnFrame([1, 2], [:a, :b])
+    @test_throws DimensionMismatch MutableColumnFrame([[1, 2], [1]], [:a, :b])
 
     @test_throws MethodError MutableColumnFrame(a = 1, b = 2)
     @test_throws DimensionMismatch MutableColumnFrame(a = [1, 2], b = [1])
@@ -128,7 +128,7 @@ end
 
 @testset "type info" begin
     s_narrow = MutableColumnFrame(a = [1, 2], b = [3, 4])
-    s_abstract = MutableColumnFrame([:a, :b], AbstractVector[[1, 2], [3, 4]])
+    s_abstract = MutableColumnFrame(AbstractVector[[1, 2], [3, 4]], [:a, :b])
     s_hetero = MutableColumnFrame(a = [1, 2], b = 3:4)
     s_string = MutableColumnFrame(a = [1, 2], b = ["x", "y"])
 

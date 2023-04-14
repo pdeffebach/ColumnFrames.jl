@@ -7,7 +7,7 @@ Base.rest(t::AbstractColumnFrame) = t
 function Base.rest(t::AbstractColumnFrame, i::Int)
     rest_syms = Base.rest(names(t), i)
     rest_vals = Base.rest(vals(t), i)
-    constructor_name(t)(rest_syms, rest_vals)
+    constructor_name(t)(rest_vals, rest_syms)
 end
 
 """
@@ -42,7 +42,7 @@ Base.getindex(t::AbstractColumnFrame, i::Int) = getindex(vals(t), i)
 Create a copy of `t`, without copying the underlying columns.
 Deviates from `NamedTuple`, which does not support `copy`.
 """
-Base.copy(t::AbstractColumnFrame) = constructor_name(t)(copy(names(t)), copy(vals(t)))
+Base.copy(t::AbstractColumnFrame) = constructor_name(t)(copy(vals(t)), copy(names(t)))
 
 """
     Base.getindex(t::MutableColumnFrame, ::Colon)
@@ -67,7 +67,7 @@ function Base.getindex(t::AbstractColumnFrame, syms::Tuple{Vararg{Symbol}})
     syms_v = collect(syms)
     new_inds = [lookup(t)[sym] for sym in syms_v]
     new_vals = vals(t)[new_inds]
-    constructor_name(t)(syms_v, new_vals)
+    constructor_name(t)(new_vals, syms_v)
 end
 
 """
@@ -82,7 +82,7 @@ Base.getindex(t::AbstractColumnFrame, strs::Tuple{Vararg{<:AbstractString}}) =
 function Base.getindex(t::AbstractColumnFrame, syms::AbstractVector{Symbol})
     new_inds = [lookup(t)[sym] for sym in syms]
     new_vals = vals(t)[new_inds]
-    constructor_name(t)(syms, new_vals)
+    constructor_name(t)(new_vals, syms)
 end
 
 """
@@ -104,7 +104,7 @@ does not allow indexing with collections of integers.
 function Base.getindex(t::AbstractColumnFrame, inds::AbstractVector{<:Integer})
     new_syms = names(t)[inds]
     new_vals = vals(t)[inds]
-    constructor_name(t)(new_syms, new_vals)
+    constructor_name(t)(new_vals, new_syms)
 end
 
 
@@ -122,7 +122,7 @@ Base.indexed_iterate(t::AbstractColumnFrame, i::Int, state=1) = (getindex(t, i),
 Base.isempty(t::AbstractColumnFrame) = isempty(vals(t))
 
 
-Base.empty(t::AbstractColumnFrame) = constructor_name(t)(Symbol[], AbstractVector[])
+Base.empty(t::AbstractColumnFrame) = constructor_name(t)(AbstractVector[], Symbol[])
 
 Base.prevind(t::AbstractColumnFrame, i::Integer) = Int(i)-1
 
@@ -143,6 +143,9 @@ end
 function Base.merge(a::AbstractColumnFrame, b::AbstractColumnFrame)
     an = names(a)
     bn = names(b)
+    if length(first(a)) != length(first(b))
+        throw(DimensionMismatch("lengths do not match"))
+    end
     nms = merge_names(an, bn)
     ka = Base.keys(lookup(a))
     kb = Base.keys(lookup(b))
@@ -153,14 +156,18 @@ function Base.merge(a::AbstractColumnFrame, b::AbstractColumnFrame)
             a[n]
         end
     end
-    constructor_name(a)(nms, vals)
+    constructor_name(a)(vals, nms)
 end
 
 function Base.merge(a::AbstractColumnFrame, itr)
     names = Symbol[]
     vals = AbstractVector[]
     inds = IdDict{Symbol,Int}()
+    lena = length(first(a))
     for (k, v) in itr
+        if length(v) != lena
+            throw(DimensionMismatch("length does not match in key $k in second argument"))
+        end
         k = k::Symbol
         oldind = Base.get(inds, k, 0)
         if oldind > 0
@@ -171,7 +178,7 @@ function Base.merge(a::AbstractColumnFrame, itr)
             inds[k] = length(names)
         end
     end
-    Base.merge(a, ColumnFrame(names, vals))
+    Base.merge(a, ColumnFrame(vals, names))
 end
 
 
@@ -179,10 +186,10 @@ Base.merge(a::AbstractColumnFrame, b::NamedTuple) = merge(a, pairs(b))
 
 Base.merge(a::NamedTuple, b::AbstractColumnFrame) = merge(a, pairs(b))
 
-Base.eltype(::Type{<:AbstractColumnFrame{V}}) where {V} = eltype(V)
-Base.keytype(::Type{<:AbstractColumnFrame{V}}) where {V} = Symbol
+Base.eltype(::Type{<:AbstractColumnFrame}) = AbstractVector
+Base.keytype(::Type{<:AbstractColumnFrame}) = Symbol
 Base.keytype(t::AbstractColumnFrame) = Base.keytype(typeof(t))
-Base.valtype(::Type{<:AbstractColumnFrame{V}}) where{V} = valtype(V)
+Base.valtype(T::Type{<:AbstractColumnFrame}) = eltype(T)
 Base.valtype(t::AbstractColumnFrame) = Base.valtype(typeof(t))
 
 function Base.:(==)(a::AbstractColumnFrame, b::AbstractColumnFrame)
@@ -232,16 +239,17 @@ function Base.map(f, nt::AbstractColumnFrame, nts::AbstractColumnFrame...)
 
     v = Base.map(f, vals(nt), (vals(t) for t in nts)...)
     if !(v isa AbstractVector{<:AbstractVector})
-        v = [[vi] for vi in v]
+        v = AbstractVector[[vi] for vi in v]
     end
-    constructor_name(nt)(nms, v)
+    constructor_name(nt)(v, nms)
 end
 
 # TODO: More merge methods
 Base.keys(nt::AbstractColumnFrame) = names(nt)
 Base.values(nt::AbstractColumnFrame) = vals(nt)
 Base.haskey(nt::AbstractColumnFrame, key::Integer) = key in 1:length(nt)
-Base.haskey(nt::AbstractColumnFrame, key::Symbol) = key in Base.keys(lookup(nt))
+Base.haskey(nt::AbstractColumnFrame, key::Symbol) = haskey(lookup(nt), key)
+Base.haskey(nt::AbstractColumnFrame, key::AbstractString) = haskey(lookup(nt), Symbol(key))
 
 _front(v::AbstractVector) = v[begin:(end-1)]
 _tail(v::AbstractVector) = v[(begin + 1):end]
@@ -251,7 +259,7 @@ Base.get(f::Base.Callable, nt::AbstractColumnFrame, key::Union{Integer, Symbol})
 
 Base.tail(t::AbstractColumnFrame) = t[(begin+1):end]
 Base.front(t::AbstractColumnFrame) = t[begin:(end-1)]
-Base.reverse(nt::AbstractColumnFrame) = constructor_name(nt)(reverse(names(nt)), reverse(vals(nt)))
+Base.reverse(nt::AbstractColumnFrame) = constructor_name(nt)(reverse(vals(nt)), reverse(names(nt)))
 
 function Base.structdiff(a::AbstractColumnFrame, b::AbstractColumnFrame)
     nms = setdiff(names(a), names(b))
